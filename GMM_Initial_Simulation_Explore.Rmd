@@ -1,0 +1,1343 @@
+---
+title: "GMM_Inference_Explore"
+author: "Peng Wang"
+date: "6/15/2021"
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, eval = FALSE)
+```
+
+## Example 1
+
+```{r simulation for exampel 1}
+source('D:/Dropbox/Repro Sampling General/R Codes/Functions_and_Packages.R')
+
+simu.size=100
+no.of.nodes=10
+run_simu_example1<-function()
+{
+# True parameters: 
+# True parameters: 
+K0 = 3
+p0 = c(.30, .25, .45)  
+mu0= c(-5, 0, 5)
+sigma2.0 = c(1,1,1) 
+nn = 250
+
+
+
+M.tmp = factor(sample(c(1,2,3), nn, replace = T, prob = p0))
+M.mat = model.matrix(~ M.tmp - 1)
+us.rel = rnorm(nn)
+ys.obs = M.mat %*% mu0 + diag(us.rel) %*% M.mat %*% sigma2.0^.5
+
+K_h_grid=1:10
+
+K_inference_repro_Mu(ys.obs,K_h_grid, repro_M_size = 200, skip_K_obs = TRUE)
+}
+
+
+simu.size=100
+ys.obs=0
+set.seed(1045)
+for (i in 1:simu.size){
+#  set.seed(56+i)
+  print(i)
+print("sum y")  
+sum(ys.obs) %>% print
+M.tmp = factor(sample(c(1,2,3), nn, replace = T, prob = p0))
+M.mat = model.matrix(~ M.tmp - 1)
+print(nn)
+print(sum(rnorm(nn)))
+aa<-rnorm(nn)
+print("sum aa")
+sum(aa) %>% print
+us.rel = aa
+print("sum u")
+sum(us.rel) %>% print
+ys.obs = M.mat %*% mu0 + diag(us.rel) %*% M.mat %*% sigma2.0^.5
+
+print("sum y again")
+sum(ys.obs) %>% print
+
+K_h_grid=1:10
+
+K_inference_repro_Mu(ys.obs,K_h_grid, repro_M_size = 2, skip_K_obs = TRUE) ->temp
+
+sum(temp$ys.obs) %>% print
+  
+}
+  
+
+
+
+# library(parallel)
+cl <- makePSOCKcluster(no.of.nodes)
+clusterEvalQ(cl,library(tidyverse))
+clusterEvalQ(cl,library(flexmix))
+clusterEvalQ(cl,library(ClusterR))
+clusterEvalQ(cl,library(pbapply))
+clusterExport(cl,ls())
+
+
+Simu_results_list_example_1<- parReplicate(cl, simu.size, run_simu_example1(), simplify=FALSE)
+
+stopCluster(cl)
+
+K0 = 3
+tibble(coverage_confidence = mean(sapply(Simu_results_list_example_1, function(x) K0 %in%x$K_confidence_set )),
+       size_confidence = mean(sapply(Simu_results_list_example_1, function(x) length(x$K_confidence_set) )), 
+       coverage_candidate = mean(sapply(Simu_results_list_example_1, function(x) K0 %in% c(3, x$K_list_u))),
+       length_candidate = mean(sapply(Simu_results_list_example_1, function(x) length(unique(x$K_list_u))+1))
+       ) %>% kable
+       
+
+
+
+```
+
+| coverage_confidence| size_confidence| coverage_candidate| length_candidate|
+|-------------------:|---------------:|------------------:|----------------:|
+|                   1|            2.91|                  1|             2.91|
+
+
+
+
+
+## Example 1.2, Example 1 with larger sample size of  $n=1000$
+```{r simulation for exampel 1.2}
+source('D:/Dropbox/Repro Sampling General/R Codes/Functions_and_Packages.R')
+example_names<-"example1.2"
+run_simu_example1.2<-function()
+{
+# True parameters: 
+# True parameters: 
+K0 = 3
+p0 = c(.30, .25, .45)  
+mu0= c(-5, 0, 5)
+sigma2.0 = c(1,1,1) 
+nn = 1000
+
+
+
+M.tmp = factor(sample(c(1,2,3), nn, replace = T, prob = p0))
+M.mat = model.matrix(~ M.tmp - 1)
+us.rel = rnorm(nn)
+ys.obs = M.mat %*% mu0 + diag(us.rel) %*% M.mat %*% sigma2.0^.5
+
+K_h_grid=1:10
+
+K_inference_repro_Mu(ys.obs,K_h_grid, repro_M_size = 200, skip_K_obs = TRUE)
+}
+
+
+simu.size=100
+no.of.nodes=20
+
+
+
+
+# library(parallel)
+cl <- makePSOCKcluster(no.of.nodes)
+clusterEvalQ(cl,library(tidyverse))
+clusterEvalQ(cl,library(flexmix))
+clusterEvalQ(cl,library(ClusterR))
+clusterEvalQ(cl,library(pbapply))
+clusterExport(cl,ls())
+Simu_results_list_example_1.2<- parReplicate(cl, simu.size, run_simu_example1.2(), simplify=FALSE)
+
+
+stopCluster(cl)
+K0 = 3
+
+
+sum_res_simulation(Simu_results_list_example_1.2)->res_table
+res_table%>% kable 
+       
+save.image(paste0(example_names, "_simualation_results.Rdata"))
+
+```
+
+| coverage_confidence| size_confidence| coverage_candidate| length_candidate|
+|-------------------:|---------------:|------------------:|----------------:|
+|                   1|            2.01|                  1|             2.01|
+
+
+## Example 2, same as example 1 but with closer distance between clusters, looks like a single normal
+
+```{r simulation example 2}
+source('D:/Dropbox/Repro Sampling General/R Codes/Functions_and_Packages.R')
+
+simu.size=100
+no.of.nodes=20
+
+run_simu_example2<-function()
+{
+# True parameters: 
+K0 = 3
+p0 = c(.30, .25, .45)  
+mu0= c(-2.5, 0, 2.5)
+sigma2.0 = c(1,1,1) # * 4
+
+## Observed data: 
+nn = 250
+
+M.tmp = factor(sample(c(1,2,3), nn, replace = T, prob = p0))
+M.mat = model.matrix(~ M.tmp - 1)
+us.rel = rnorm(nn)
+ys.obs = M.mat %*% mu0 + diag(us.rel) %*% M.mat %*% sigma2.0^.5
+
+K_h_grid=1:10
+
+K_inference_repro_Mu(ys.obs,K_h_grid, repro_M_size = 200, skip_K_obs = TRUE)
+}
+
+
+
+# library(parallel)
+cl <- makePSOCKcluster(no.of.nodes)
+clusterEvalQ(cl,library(tidyverse))
+clusterEvalQ(cl,library(flexmix))
+clusterEvalQ(cl,library(ClusterR))
+clusterEvalQ(cl,library(pbapply))
+clusterExport(cl,ls())
+
+
+Simu_results_list_example2<- parReplicate(cl, simu.size, run_simu_example2(), simplify=FALSE)
+K0 = 3
+tibble(coverage_confidence = mean(sapply(Simu_results_list_example2, function(x) K0 %in%x$K_confidence_set )),
+       size_confidence = mean(sapply(Simu_results_list_example2, function(x) length(x$K_confidence_set) )), 
+       coverage_candidate = mean(sapply(Simu_results_list_example2, function(x) K0 %in% c(2, x$K_list_u))),
+       length_candidate = mean(sapply(Simu_results_list_example2, function(x) length(unique(x$K_list_u))+1))
+       ) %>% kable
+       
+
+stopCluster(cl)
+
+```
+
+
+
+| coverage_confidence| size_confidence| coverage_candidate| length_candidate|
+|-------------------:|---------------:|------------------:|----------------:|
+|                0.99|            2.84|               0.99|              3.7|
+
+## Example 3 same as example 1 but with different variance
+
+```{r simulation example 3}
+source('D:/Dropbox/Repro Sampling General/R Codes/Functions_and_Packages.R')
+example_names<-"example3"
+run_simu_example3<-function(seed_iter)
+{
+  
+set.seed(seed_iter)
+
+K0 = 3
+p0 = c(.30, .25, .45)  
+mu0= c(-5, 0, 5)
+sigma2.0 = c(3,1,4) # * 4
+nn = 250
+
+M.tmp = factor(sample(c(1,2,3), nn, replace = T, prob = p0))
+M.mat = model.matrix(~ M.tmp - 1)
+us.rel = rnorm(nn)
+ys.obs = M.mat %*% mu0 + diag(us.rel) %*% M.mat %*% sigma2.0^.5
+
+K_h_grid=1:10
+
+tryCatch(K_inference_repro_Mu(ys.obs,K_h_grid, repro_M_size = 200, skip_K_obs = TRUE),
+         error = function(c) return(list(K_confidence_set_1=NULL,
+              Nuclear_values_1=NULL,
+              K_confidence_set_2=NULL,
+              Nuclear_values_2=NULL,
+              ys.obs=ys.obs
+  )))
+}
+
+
+
+
+simu.size=100
+no.of.nodes=20
+
+# library(parallel)
+cl <- makePSOCKcluster(no.of.nodes)
+clusterEvalQ(cl,library(tidyverse))
+clusterEvalQ(cl,library(flexmix))
+clusterEvalQ(cl,library(ClusterR))
+clusterEvalQ(cl,library(pbapply))
+clusterExport(cl,ls())
+
+
+seed0=1045
+set.seed(seed0)
+seed_vector<-100*(simu.size)*runif(simu.size)
+Simu_results_list_example_3<- parSapply(cl, seed_vector, run_simu_example3, simplify=FALSE)
+
+
+
+#Simu_results_list_example_3<- parReplicate(cl, simu.size, run_simu_example3(), simplify=FALSE)
+stopCluster(cl)
+
+K0 = 3
+
+
+sum_res_simulation(Simu_results_list_example_3)->res_table
+res_table%>% kable 
+       
+save.image(paste0(example_names, "_simualation_results.Rdata"))
+
+```
+
+
+| coverage_confidence| size_confidence| coverage_candidate| length_candidate|
+|-------------------:|---------------:|------------------:|----------------:|
+|                   1|            2.98|                  1|             3.67|
+
+
+
+## Example 3 same as example 1 but with different variance
+
+```{r simulation example 3}
+source('D:/Dropbox/Repro Sampling General/R Codes/Functions_and_Packages.R')
+example_names<-"example3"
+run_simu_example3<-function(seed_iter)
+{
+  
+set.seed(seed_iter)
+
+K0 = 10
+p0 = c(.30, .25, .45)  
+mu0= c(-5, 0, 5)
+sigma2.0 = c(3,1,4) # * 4
+nn = 250
+
+M.tmp = factor(sample(c(1,2,3), nn, replace = T, prob = p0))
+M.mat = model.matrix(~ M.tmp - 1)
+us.rel = rnorm(nn)
+ys.obs = M.mat %*% mu0 + diag(us.rel) %*% M.mat %*% sigma2.0^.5
+
+K_h_grid=1:10
+
+tryCatch(K_inference_repro_Mu(ys.obs,K_h_grid, repro_M_size = 200, skip_K_obs = TRUE),
+         error = function(c) return(list(K_confidence_set_1=NULL,
+              Nuclear_values_1=NULL,
+              K_confidence_set_2=NULL,
+              Nuclear_values_2=NULL,
+              ys.obs=ys.obs
+  )))
+}
+
+
+
+
+simu.size=100
+no.of.nodes=20
+
+# library(parallel)
+cl <- makePSOCKcluster(no.of.nodes)
+clusterEvalQ(cl,library(tidyverse))
+clusterEvalQ(cl,library(flexmix))
+clusterEvalQ(cl,library(ClusterR))
+clusterEvalQ(cl,library(pbapply))
+clusterExport(cl,ls())
+
+
+seed0=1045
+set.seed(seed0)
+seed_vector<-100*(simu.size)*runif(simu.size)
+Simu_results_list_example_3<- parSapply(cl, seed_vector, run_simu_example3, simplify=FALSE)
+
+
+
+#Simu_results_list_example_3<- parReplicate(cl, simu.size, run_simu_example3(), simplify=FALSE)
+
+stopCluster(cl)
+
+Simu_results_list_example_3 %>% sapply( function(x) x$K_confidence_set) %>% is.null() %>% sum
+
+K0 = 3
+
+
+sum_res_simulation(Simu_results_list_example_3)->res_table
+res_table%>% kable 
+       
+save.image(paste0(example_names, "_simualation_results.Rdata"))
+
+```
+
+
+
+
+## Example 4 Chen, Li and Fu JASA 2012 K_0=5, Table 6 Lowest Power Example, N=200
+
+```{r simulation example 4}
+source('D:/Dropbox/Repro Sampling General/R Codes/Functions_and_Packages.R')
+example_names<-"example4"
+run_simu_example4<-function(seed_iter)
+{
+  
+set.seed(seed_iter)
+
+K0 = 5
+p0 = c(.2, .2, .2, .2, .2)  
+mu0= c(-5, -2.5,0,2.5, 5)
+sigma2.0 = c(1,1,1,1,1) # * 4
+nn = 200
+
+M.tmp = factor(sample(1:K0, nn, replace = T, prob = p0))
+M.mat = model.matrix(~ M.tmp - 1)
+us.rel = rnorm(nn)
+ys.obs = M.mat %*% mu0 + diag(us.rel) %*% M.mat %*% sigma2.0^.5
+
+K_h_grid=1:10
+
+tryCatch(K_inference_repro_Mu(ys.obs,K_h_grid, repro_M_size = 200, skip_K_obs = TRUE),
+         error = function(c) return(list(K_confidence_set_1=NULL,
+              Nuclear_values_1=NULL,
+              K_confidence_set_2=NULL,
+              Nuclear_values_2=NULL,
+              ys.obs=ys.obs
+  )))
+}
+
+
+
+
+simu.size=100
+no.of.nodes=20
+
+# library(parallel)
+cl <- makePSOCKcluster(no.of.nodes)
+clusterEvalQ(cl,library(tidyverse))
+clusterEvalQ(cl,library(flexmix))
+clusterEvalQ(cl,library(ClusterR))
+clusterEvalQ(cl,library(pbapply))
+clusterExport(cl,ls())
+
+seed0=2046
+set.seed(seed0)
+seed_vector<-100*(simu.size)*runif(simu.size)
+Simu_results_list_example_4<- parSapply(cl, seed_vector, run_simu_example4, simplify=FALSE)
+stopCluster(cl)
+
+
+
+Simu_results_list_example_4 %>% sapply( function(x) x$K_confidence_set) %>% is.null() %>% sum
+Simu_results_list_example_4 %>% sapply( function(x) x$K_list) 
+
+
+K0 = 5
+sum_res_simulation(Simu_results_list_example_4)->res_table
+res_table%>% kable 
+
+
+       
+save.image(paste0(example_names, "_simualation_results.Rdata"))
+
+```
+
+
+
+| coverage_confidence| size_confidence| coverage_candidate| length_candidate|
+|-------------------:|---------------:|------------------:|----------------:|
+|                0.03|            2.62|               0.04|             3.41|
+
+
+
+
+
+
+
+## Example 5 Chen, Li and Fu JASA 2012 K_0=5, Table 6 Lowest Power Example, N=400
+
+```{r simulation example 5}
+source('D:/Dropbox/Repro Sampling General/R Codes/Functions_and_Packages.R')
+example_names<-"example5"
+run_simu_example5<-function(seed_iter)
+{
+  
+set.seed(seed_iter)
+
+K0 = 5
+p0 = c(.2, .2, .2, .2, .2)  
+mu0= c(-5, -2.5,0,2.5, 5)
+sigma2.0 = c(1,1,1,1,1) # * 4
+nn = 400
+
+M.tmp = factor(sample(1:K0, nn, replace = T, prob = p0))
+M.mat = model.matrix(~ M.tmp - 1)
+us.rel = rnorm(nn)
+ys.obs = M.mat %*% mu0 + diag(us.rel) %*% M.mat %*% sigma2.0^.5
+
+K_h_grid=1:10
+
+tryCatch(K_inference_repro_Mu(ys.obs,K_h_grid, repro_M_size = 200, skip_K_obs = TRUE),
+         error = function(c) return(list(K_confidence_set_1=NULL,
+              Nuclear_values_1=NULL,
+              K_confidence_set_2=NULL,
+              Nuclear_values_2=NULL,
+              ys.obs=ys.obs
+  )))
+}
+
+
+
+
+simu.size=100
+no.of.nodes=20
+
+# library(parallel)
+cl <- makePSOCKcluster(no.of.nodes)
+clusterEvalQ(cl,library(tidyverse))
+clusterEvalQ(cl,library(flexmix))
+clusterEvalQ(cl,library(ClusterR))
+clusterEvalQ(cl,library(pbapply))
+clusterExport(cl,ls())
+
+seed0=2046
+set.seed(seed0)
+seed_vector<-100*(simu.size)*runif(simu.size)
+Simu_results_list_example_5<- parSapply(cl, seed_vector, run_simu_example5, simplify=FALSE)
+stopCluster(cl)
+
+
+
+Simu_results_list_example_5 %>% sapply( function(x) x$K_confidence_set) %>% is.null() %>% sum
+Simu_results_list_example_5 %>% sapply( function(x) x$K_list) 
+Simu_results_list_example_5 %>% sapply( function(x) x$K_hat_obs) %>% table 
+
+K0 = 5
+sum_res_simulation(Simu_results_list_example_5)->res_table
+res_table%>% kable 
+
+
+       
+save.image(paste0(example_names, "_simualation_results.Rdata"))
+
+```
+
+
+| coverage_confidence| size_confidence| coverage_candidate| length_candidate|
+|-------------------:|---------------:|------------------:|----------------:|
+|                0.15|            2.83|               0.21|             3.69|
+
+
+
+
+
+
+
+## Example 6 Chen, Li and Fu JASA 2012 K_0=5, Table 6 3rd Row, 
+
+```{r simulation example 6}
+source('D:/Dropbox/Repro Sampling General/R Codes/Functions_and_Packages.R')
+example_names<-"example6"
+run_simu_example6<-function(seed_iter)
+{
+  
+set.seed(seed_iter)
+
+K0 = 5
+p0 = c(.2, .2, .2, .2, .2)  
+mu0= c(-5, -2.5,0,2.5, 5)
+sigma2.0 = c(0.6,1.2,0.6,1.2,1) # * 4
+nn = 400
+
+M.tmp = factor(sample(1:K0, nn, replace = T, prob = p0))
+M.mat = model.matrix(~ M.tmp - 1)
+us.rel = rnorm(nn)
+ys.obs = M.mat %*% mu0 + diag(us.rel) %*% M.mat %*% sigma2.0^.5
+
+K_h_grid=1:10
+
+tryCatch(K_inference_repro_Mu(ys.obs,K_h_grid, repro_M_size = 200, skip_K_obs = TRUE),
+         error = function(c) return(list(K_confidence_set_1=NULL,
+              Nuclear_values_1=NULL,
+              K_confidence_set_2=NULL,
+              Nuclear_values_2=NULL,
+              ys.obs=ys.obs
+  )))
+}
+
+
+
+
+simu.size=100
+no.of.nodes=20
+
+# library(parallel)
+cl <- makePSOCKcluster(no.of.nodes)
+clusterEvalQ(cl,library(tidyverse))
+clusterEvalQ(cl,library(flexmix))
+clusterEvalQ(cl,library(ClusterR))
+clusterEvalQ(cl,library(pbapply))
+clusterExport(cl,ls())
+
+seed0=3047
+set.seed(seed0)
+seed_vector<-100*(simu.size)*runif(simu.size)
+Simu_results_list_example_6<- parSapply(cl, seed_vector, run_simu_example6, simplify=FALSE)
+stopCluster(cl)
+
+
+
+Simu_results_list_example_6 %>% sapply( function(x) x$K_confidence_set) %>% is.null() %>% sum
+Simu_results_list_example_6 %>% sapply( function(x) x$K_list) 
+
+Simu_results_list_example_6 %>% sapply( function(x) x$K_hat_obs) %>% table 
+K0 = 5
+sum_res_simulation(Simu_results_list_example_6)->res_table
+res_table%>% kable 
+
+
+##Do another run for Repro_size = 400, and repro_size=200
+
+
+source('D:/Dropbox/Repro Sampling General/R Codes/Functions_and_Packages.R')
+example_names<-"example6_2"
+run_simu_example6<-function(seed_iter)
+{
+  
+set.seed(seed_iter)
+
+K0 = 5
+p0 = c(.2, .2, .2, .2, .2)  
+mu0= c(-5, -2.5,0,2.5, 5)
+sigma2.0 = c(0.6,1.2,0.6,1.2,1) # * 4
+nn = 400
+
+M.tmp = factor(sample(1:K0, nn, replace = T, prob = p0))
+M.mat = model.matrix(~ M.tmp - 1)
+us.rel = rnorm(nn)
+ys.obs = M.mat %*% mu0 + diag(us.rel) %*% M.mat %*% sigma2.0^.5
+
+K_h_grid=1:10
+
+tryCatch(K_inference_repro_Mu(ys.obs,K_h_grid, repro_M_size = 400, repro_size = 200, skip_K_obs = TRUE),
+         error = function(c) return(list(K_confidence_set_1=NULL,
+              Nuclear_values_1=NULL,
+              K_confidence_set_2=NULL,
+              Nuclear_values_2=NULL,
+              ys.obs=ys.obs
+  )))
+}
+
+simu.size=100
+no.of.nodes=20
+
+
+
+cl <- makePSOCKcluster(no.of.nodes)
+clusterEvalQ(cl,library(tidyverse))
+clusterEvalQ(cl,library(flexmix))
+clusterEvalQ(cl,library(ClusterR))
+clusterEvalQ(cl,library(pbapply))
+clusterExport(cl,ls())
+seed0=4048
+set.seed(seed0)
+seed_vector<-100*(simu.size)*runif(simu.size)
+Simu_results_list_example_6_2<- parSapply(cl, seed_vector, run_simu_example6, simplify=FALSE)
+stopCluster(cl)
+
+
+
+       
+save.image(paste0(example_names, "_simualation_results.Rdata"))
+
+
+
+
+source('D:/Dropbox/Repro Sampling General/R Codes/Functions_and_Packages.R')
+example_names<-"example6_3"
+run_simu_example6<-function(seed_iter)
+{
+  
+set.seed(seed_iter)
+
+K0 = 5
+p0 = c(.2, .2, .2, .2, .2)  
+mu0= c(-5, -2.5,0,2.5, 5)
+sigma2.0 = c(0.6,1.2,0.6,1.2,1) # * 4
+nn = 400
+
+M.tmp = factor(sample(1:K0, nn, replace = T, prob = p0))
+M.mat = model.matrix(~ M.tmp - 1)
+us.rel = rnorm(nn)
+ys.obs = M.mat %*% mu0 + diag(us.rel) %*% M.mat %*% sigma2.0^.5
+
+K_h_grid=1:10
+
+tryCatch(K_inference_repro_Mu(ys.obs,K_h_grid, repro_M_size = 1000, repro_size = 200, skip_K_obs = TRUE),
+         error = function(c) return(list(K_confidence_set_1=NULL,
+              Nuclear_values_1=NULL,
+              K_confidence_set_2=NULL,
+              Nuclear_values_2=NULL,
+              ys.obs=ys.obs
+  )))
+}
+
+simu.size=100
+no.of.nodes=20
+
+
+
+cl <- makePSOCKcluster(no.of.nodes)
+clusterEvalQ(cl,library(tidyverse))
+clusterEvalQ(cl,library(flexmix))
+clusterEvalQ(cl,library(ClusterR))
+clusterEvalQ(cl,library(pbapply))
+clusterExport(cl,ls())
+seed0=4048
+set.seed(seed0)
+seed_vector<-100*(simu.size)*runif(simu.size)
+Simu_results_list_example_6_3<- parSapply(cl, seed_vector, run_simu_example6, simplify=FALSE)
+stopCluster(cl)
+
+
+
+       
+save.image(paste0(example_names, "_simualation_results.Rdata"))
+
+
+Simu_results_list_example_6_3 %>% sapply( function(x) x$K_hat_obs) %>% table 
+K0 = 5
+sum_res_simulation(Simu_results_list_example_6_3)->res_table
+res_table%>% kable 
+
+
+
+map2(Simu_results_list_example_6, Simu_results_list_example_6_2, function(x,y) c(x$K_confidence_set, y$K_confidence_set) %>%  unique %>% `%in%` (K0,.)) %>% do.call(c, .) %>%  mean
+
+
+
+map2(Simu_results_list_example_6, Simu_results_list_example_6_2, function(x,y) c(x$K_confidence_set, y$K_confidence_set) %>%  unique %>% `%in%` (3,.)) %>% do.call(c, .) %>%  mean
+
+```
+
+
+### First run, repro_M_size=200, repro_size=100
+
+| coverage_confidence| size_confidence| coverage_candidate| length_candidate|
+|-------------------:|---------------:|------------------:|----------------:|
+|                0.51|             3.4|               0.58|             3.81|
+
+
+### Second run, repro_M_size=400, repro_size=200
+
+| coverage_confidence| size_confidence| coverage_candidate| length_candidate|
+|-------------------:|---------------:|------------------:|----------------:|
+|                0.67|            3.63|               0.74|             4.06|
+
+
+### Third run, repro_M_size=1000, repro_size=200
+
+| coverage_confidence| size_confidence| coverage_candidate| length_candidate|
+|-------------------:|---------------:|------------------:|----------------:|
+|                0.88|            3.95|               0.91|              4.4|
+
+
+
+
+
+
+```{r rerun example 6_3 with fixed variance when obtaining the ccandidates}
+
+
+source('D:/Dropbox/Repro Sampling General/R Codes/Functions_and_Packages.R')
+example_names<-"example6_3R"
+run_simu_example6<-function(seed_iter)
+{
+  
+set.seed(seed_iter)
+
+K0 = 5
+p0 = c(.2, .2, .2, .2, .2)  
+mu0= c(-5, -2.5,0,2.5, 5)
+sigma2.0 = c(0.6,1.2,0.6,1.2,1) # * 4
+nn = 400
+
+M.tmp = factor(sample(1:K0, nn, replace = T, prob = p0))
+M.mat = model.matrix(~ M.tmp - 1)
+us.rel = rnorm(nn)
+ys.obs = M.mat %*% mu0 + diag(us.rel) %*% M.mat %*% sigma2.0^.5
+
+K_h_grid=1:10
+
+tryCatch(K_inference_repro_Mu(ys.obs,K_h_grid, repro_M_size = 1000, repro_size = 200, skip_K_obs = TRUE),
+         error = function(c) return(list(K_confidence_set_1=NULL,
+              Nuclear_values_1=NULL,
+              K_confidence_set_2=NULL,
+              Nuclear_values_2=NULL,
+              ys.obs=ys.obs
+  )))
+}
+
+simu.size=100
+no.of.nodes=20
+
+
+p_value_vector<-pbsapply(1:100, function(i) (M.mat %*% mu0 + diag(rnorm(nn)) %*% M.mat %*% sigma2.0^.5) %>%as.vector %>%  emtest.norm(m0 = 3) %>% `$`(`P-values`))
+
+
+
+cl <- makePSOCKcluster(no.of.nodes)
+clusterEvalQ(cl,library(tidyverse))
+clusterEvalQ(cl,library(flexmix))
+clusterEvalQ(cl,library(ClusterR))
+clusterEvalQ(cl,library(pbapply))
+clusterExport(cl,ls())
+seed0=4048
+set.seed(seed0)
+seed_vector<-100*(simu.size)*runif(simu.size)
+Simu_results_list_example_6_3<- parSapply(cl, seed_vector, run_simu_example6, simplify=FALSE)
+stopCluster(cl)
+
+
+
+       
+save.image(paste0(example_names, "_simualation_results.Rdata"))
+
+
+```
+
+
+Table: Table of K+obs
+|.  | Freq|
+|:--|----:|
+|2  |    1|
+|3  |   90|
+|4  |    8|
+|5  |    1|
+
+
+
+Table: Coverage of Confidence Sets
+| coverage_confidence| size_confidence| coverage_candidate| length_candidate|
+|-------------------:|---------------:|------------------:|----------------:|
+|                   1|            4.43|                  1|             5.56|
+
+
+
+
+
+```{r rerun example 6_3 with fixed variance and modified version of BIC (+1/n)}
+setwd("D:/Dropbox/Repro Sampling General/R Codes")
+source('D:/Dropbox/Repro Sampling General/R Codes/Functions_and_Packages.R')
+example_names<-"example6_3R_mBIC"
+run_simu_example6<-function(seed_iter)
+{
+  
+set.seed(seed_iter)
+
+K0 = 5
+p0 = c(.2, .2, .2, .2, .2)  
+mu0= c(-5, -2.5,0,2.5, 5)
+sigma2.0 = c(0.6,1.2,0.6,1.2,1) # * 4
+nn = 400
+
+M.tmp = factor(sample(1:K0, nn, replace = T, prob = p0))
+M.mat = model.matrix(~ M.tmp - 1)
+us.rel = rnorm(nn)
+ys.obs = M.mat %*% mu0 + diag(us.rel) %*% M.mat %*% sigma2.0^.5
+
+
+seed_local=2*seed_iter
+
+K_h_grid=1:10
+
+tryCatch(K_inference_repro_Mu(ys.obs,K_h_grid, repro_M_size = 200, repro_size = 200, skip_K_obs = TRUE, seed_local=seed_local),
+         error = function(c) return(list(K_confidence_set_1=NULL,
+              Nuclear_values_1=NULL,
+              K_confidence_set_2=NULL,
+              Nuclear_values_2=NULL,
+              ys.obs=ys.obs
+  )))
+}
+
+simu.size=100
+no.of.nodes=20
+
+
+
+cl <- makePSOCKcluster(no.of.nodes)
+clusterEvalQ(cl,library(tidyverse))
+clusterEvalQ(cl,library(flexmix))
+clusterEvalQ(cl,library(ClusterR))
+clusterEvalQ(cl,library(pbapply))
+clusterExport(cl,ls())
+seed0=4048
+#set.seed(seed0)
+seed_vector<-seed0+ 1:simu.size
+Simu_results_list_example_6_3<- parSapply(cl, seed_vector, run_simu_example6, simplify=FALSE)
+stopCluster(cl)
+
+
+save.image(paste0(example_names, Sys.Date(), "_simualation_results.Rdata"))
+
+Simu_results_list_example_6_3 %>% sapply( function(x) x$K_hat_obs) %>% table %>% kable 
+K0 = 5
+sum_res_simulation(Simu_results_list_example_6_3)->res_table
+res_table%>% kable 
+
+```
+
+
+|.  | Freq|
+|:--|----:|
+|2  |    1|
+|3  |   90|
+|4  |    8|
+|5  |    1|
+
+
+
+| coverage_confidence| size_confidence| coverage_candidate| length_candidate|
+|-------------------:|---------------:|------------------:|----------------:|
+|                   1|            5.03|                  1|             5.39|
+
+
+
+
+```{r rerun example 6_3_chen with fixed variance and modified version of BIC (+1/n)}
+setwd("D:/Dropbox/Repro Sampling General/R Codes")
+source('D:/Dropbox/Repro Sampling General/R Codes/Functions_and_Packages.R')
+example_names<-"example6_3R2_Chen"
+run_simu_example6<-function(seed_iter)
+{
+  
+set.seed(seed_iter)
+
+K0 = 5
+p0 = c(.2, .2, .2, .2, .2)  
+mu0= c(-5, -2.5,0,2.5, 5)
+sigma2.0 = c(0.6,1.2,0.6,1.2,1)^2 # * 4
+nn = 400
+
+M.tmp = factor(sample(1:K0, nn, replace = T, prob = p0))
+M.mat = model.matrix(~ M.tmp - 1)
+us.rel = rnorm(nn)
+ys.obs = M.mat %*% mu0 + diag(us.rel) %*% M.mat %*% sigma2.0^.5
+
+
+seed_local=2*seed_iter
+
+K_h_grid=1:10
+
+tryCatch(K_inference_repro_Mu(ys.obs,K_h_grid, repro_M_size = 200, repro_size = 200, skip_K_obs = TRUE, seed_local=seed_local),
+         error = function(c) return(list(K_confidence_set_1=NULL,
+              Nuclear_values_1=NULL,
+              K_confidence_set_2=NULL,
+              Nuclear_values_2=NULL,
+              ys.obs=ys.obs
+  )))
+}
+
+simu.size=100
+no.of.nodes=20
+
+
+
+cl <- makePSOCKcluster(no.of.nodes)
+clusterEvalQ(cl,library(tidyverse))
+clusterEvalQ(cl,library(flexmix))
+clusterEvalQ(cl,library(ClusterR))
+clusterEvalQ(cl,library(pbapply))
+clusterExport(cl,ls())
+seed0=4048
+#set.seed(seed0)
+seed_vector<-seed0+ 1:simu.size
+Simu_results_list_example_6_3<- parSapply(cl, seed_vector, run_simu_example6, simplify=FALSE)
+stopCluster(cl)
+
+
+p_value_vector_chen<-pbsapply(1:100, function(i) (M.mat %*% mu0 + diag(rnorm(nn)) %*% M.mat %*% sigma2.0^.5) %>%as.vector %>%  emtest.norm(m0 = 3) %>% `$`(`P-values`))
+
+
+save.image(paste0(example_names, Sys.Date(), "_simualation_results.Rdata"))
+
+Simu_results_list_example_6_3 %>% sapply( function(x) x$K_hat_obs) %>% table %>% kable 
+K0 = 5
+sum_res_simulation(Simu_results_list_example_6_3)->res_table
+res_table%>% kable 
+
+```
+
+
+
+|.  | Freq|
+|:--|----:|
+|3  |   67|
+|4  |   22|
+|5  |   11|
+
+
+| coverage_confidence| size_confidence| coverage_candidate| length_candidate|
+|-------------------:|---------------:|------------------:|----------------:|
+|                   1|            6.25|                  1|             7.89|
+
+
+```{r data analysis SLC data}
+setwd("D:/Dropbox/Repro Sampling General/R Codes")
+##Data in MixtureInf package
+source('D:/Dropbox/Repro Sampling General/R Codes/Functions_and_Packages.R')
+data(SLC)
+seed_local=7788
+set.seed(seed_local)
+K_h_grid=1:10
+K_infer_SLC<-K_inference_repro_Mu(ys.obs = SLC$SLC, K_h_grid, repro_M_size = 200, repro_size = 200, skip_K_obs = FALSE, seed_local=seed_local)
+K_infer_SLC_7788<-K_infer_SLC
+
+saveRDS(K_infer_SLC_7788, "SLC_Data_Seed_7788.RDS")
+
+# 
+# source('D:/Dropbox/Repro Sampling General/R Codes/Functions_and_Packages.R')
+# data(SLC)
+# seed_local=1122
+# set.seed(seed_local)
+# K_h_grid=1:10
+# K_infer_SLC<-K_inference_repro_Mu(ys.obs = SLC$SLC, K_h_grid, repro_M_size = 200, repro_size = 200, skip_K_obs = FALSE, seed_local=seed_local)
+# K_infer_SLC_1122<-K_infer_SLC
+# saveRDS(K_infer_SLC_1122, "SLC_Data_Seed_1122.RDS")
+
+
+SLC_K_2<-GMM(SLC, 2)
+SLC_K_3<-GMM(SLC, 3)
+SLC_K_4<-GMM(SLC, 4)
+
+mm_density_2<-function(x) sum(SLC_K_2$weights*sapply(1:2, function(i) dnorm(x, SLC_K_2$centroids[i], sd = sqrt(SLC_K_2$covariance_matrices[i]))))
+
+mm_density_3<-function(x) sum(SLC_K_3$weights*sapply(1:3, function(i) dnorm(x, SLC_K_3$centroids[i], sd = sqrt(SLC_K_3$covariance_matrices[i]))))
+
+
+mm_density_4<-function(x) sum(SLC_K_4$weights*sapply(1:4, function(i) dnorm(x, SLC_K_4$centroids[i], sd = sqrt(SLC_K_4$covariance_matrices[i]))))
+
+hist(SLC$SLC, breaks = 20,probability = T, ylim = c(0,6), xlab = "SLC Measurements", main = "")
+lines(seq(0, 0.7,length.out = 1000), sapply(seq(0, 0.7,length.out = 1000), mm_density_2), lty=4, lwd=2 )
+lines(seq(0, 0.7,length.out = 1000), sapply(seq(0, 0.7,length.out = 1000), mm_density_3),  lty=2, col="blue", lwd=2 )
+lines(seq(0, 0.7,length.out = 1000), sapply(seq(0, 0.7,length.out = 1000), mm_density_4),  lty=1, col="red", lwd=2)
+legend(x = 0.5, y = 4, legend = c("K=2", "K=3", "K=4"), col = c("black", "blue", "red"), lty = c(4,2,1))
+
+library(xtable)
+tibble(
+K=c(2,3,4),
+normal_mean=c(
+SLC_K_2$centroids %>%  round(digits = 4) %>% paste(collapse = ","),
+SLC_K_3$centroids %>%  round(digits = 4) %>% paste(collapse = ","),
+SLC_K_4$centroids %>%  round(digits = 4) %>% paste(collapse = ",")
+),
+normal_sd=c(
+SLC_K_2$covariance_matrices %>% sqrt %>%   round(digits = 4) %>% paste(collapse = ","),
+SLC_K_3$covariance_matrices %>% sqrt %>%  round(digits = 4) %>% paste(collapse = ","),
+SLC_K_4$covariance_matrices %>% sqrt %>%  round(digits = 4) %>% paste(collapse = ",")
+),
+weights=c(
+  SLC_K_2$weights %>%  round(digits = 4) %>% paste(collapse = ","),
+SLC_K_3$weights %>%  round(digits = 4) %>% paste(collapse = ","),
+SLC_K_4$weights %>%  round(digits = 4) %>% paste(collapse = ",")
+)
+) %>% xtable() %>% print(include.rownames=FALSE)
+
+```
+
+
+
+```{r simulation using settings from SLC data, K0=3}
+setwd("D:/Dropbox/Repro Sampling General/R Codes")
+source('D:/Dropbox/Repro Sampling General/R Codes/Functions_and_Packages.R')
+example_names<-"example_SLC_K3"
+SLC_K_3<-readRDS("SLC_K_3.RDS")
+
+data(SLC)
+
+K0 = 3
+p0 = SLC_K_3$weights  
+mu0= SLC_K_3$centroids
+sigma2.0 = SLC_K_3$covariance_matrices # * 4
+nn = length(SLC$SLC)
+
+M.tmp = factor(sample(1:K0, nn, replace = T, prob = p0))
+M.mat = model.matrix(~ M.tmp - 1)
+
+run_simu_example_SLC<-function(seed_iter)
+{
+  
+set.seed(seed_iter)
+# M.tmp = factor(sample(1:K0, nn, replace = T, prob = p0))
+# M.mat = model.matrix(~ M.tmp - 1)
+us.rel = rnorm(nn)
+ys.obs = M.mat %*% mu0 + diag(us.rel) %*% M.mat %*% sigma2.0^.5
+
+
+seed_local=2*seed_iter
+
+K_h_grid=1:10
+
+tryCatch(K_inference_repro_Mu(ys.obs,K_h_grid, repro_M_size = 200, repro_size = 200, skip_K_obs = TRUE, seed_local=seed_local),
+         error = function(c) return(list(K_confidence_set_1=NULL,
+              Nuclear_values_1=NULL,
+              K_confidence_set_2=NULL,
+              Nuclear_values_2=NULL,
+              ys.obs=ys.obs
+  )))
+}
+
+simu.size=200
+no.of.nodes=20
+
+
+
+cl <- makePSOCKcluster(no.of.nodes)
+clusterEvalQ(cl,library(tidyverse))
+clusterEvalQ(cl,library(flexmix))
+clusterEvalQ(cl,library(ClusterR))
+clusterEvalQ(cl,library(pbapply))
+clusterExport(cl,ls())
+seed0=4048
+#set.seed(seed0)
+seed_vector<-seed0+ 1:simu.size
+Simu_results_list_example_SLC<- parSapply(cl, seed_vector, run_simu_example_SLC, simplify=FALSE)
+stopCluster(cl)
+
+# 
+p_value_vector_chen<-pbsapply(1:simu.size, function(i) Simu_results_list_example_SLC[[i]]$ys.obs %>%as.vector %>%  emtest.norm(m0 = 2) %>% `$`(`P-values`))
+
+(p_value_vector_chen<0.05) %>% sum
+
+
+save.image(paste0(example_names, Sys.Date(), "_simualation_results.Rdata"))
+
+Simu_results_list_example_SLC %>% sapply( function(x) x$K_hat_obs) %>% table %>% kable 
+sum_res_simulation(Simu_results_list_example_SLC)->res_table
+add_column(res_table, Chen_power=(p_value_vector_chen<0.05) %>%mean) %>% kable
+res_table%>% kable 
+```
+
+
+|.  | Freq|
+|:--|----:|
+|1  |   12|
+|2  |  175|
+|3  |   13|
+
+| coverage_confidence| SE_coverage_confidence| size_confidence| SE_size_confidence| coverage_candidate| SE_coverage_candidate| length_candidate| SE_length_candidate| Chen_power|
+|-------------------:|----------------------:|---------------:|------------------:|------------------:|---------------------:|----------------:|-------------------:|----------:|
+|                0.99|              0.0070533|           2.975|          0.0488241|                  1|                     0|            3.515|           0.0548994|       0.26|
+
+Majority of the confidence set is {2,3,4}
+
+
+
+
+```{r simulation using settings from SLC data, K0=4}
+setwd("D:/Dropbox/Repro Sampling General/R Codes")
+source('D:/Dropbox/Repro Sampling General/R Codes/Functions_and_Packages.R')
+example_names<-"example_SLC_K4"
+SLC_K_4<-readRDS("SLC_K_4.RDS")
+
+data(SLC)
+
+K0 = 4
+p0 = SLC_K_4$weights  
+mu0= SLC_K_4$centroids
+sigma2.0 = SLC_K_4$covariance_matrices # * 4
+nn = length(SLC$SLC)
+
+run_simu_example_SLC<-function(seed_iter)
+{
+  
+set.seed(seed_iter)
+M.tmp = factor(sample(1:K0, nn, replace = T, prob = p0))
+M.mat = model.matrix(~ M.tmp - 1)
+us.rel = rnorm(nn)
+ys.obs = M.mat %*% mu0 + diag(us.rel) %*% M.mat %*% sigma2.0^.5
+
+
+seed_local=2*seed_iter
+
+K_h_grid=1:10
+
+tryCatch(K_inference_repro_Mu(ys.obs,K_h_grid, repro_M_size = 400, repro_size = 200, skip_K_obs = TRUE, seed_local=seed_local),
+         error = function(c) return(list(K_confidence_set_1=NULL,
+              Nuclear_values_1=NULL,
+              K_confidence_set_2=NULL,
+              Nuclear_values_2=NULL,
+              ys.obs=ys.obs
+  )))
+}
+
+simu.size=200
+no.of.nodes=20
+
+
+
+cl <- makePSOCKcluster(no.of.nodes)
+clusterEvalQ(cl,library(tidyverse))
+clusterEvalQ(cl,library(flexmix))
+clusterEvalQ(cl,library(ClusterR))
+clusterEvalQ(cl,library(pbapply))
+clusterExport(cl,ls())
+seed0=4048
+#set.seed(seed0)
+seed_vector<-seed0+ 1:simu.size
+Simu_results_list_example_SLC<- parSapply(cl, seed_vector, run_simu_example_SLC, simplify=FALSE)
+stopCluster(cl)
+
+# 
+p_value_vector_chen<-pbsapply(1:simu.size, function(i) Simu_results_list_example_SLC[[i]]$ys.obs %>%as.vector %>%  emtest.norm(m0 = 2) %>% `$`(`P-values`))
+
+
+
+# 
+p_value_vector_chen_m03<-pbsapply(1:simu.size, function(i) Simu_results_list_example_SLC[[i]]$ys.obs %>%as.vector %>%  emtest.norm(m0 = 3) %>% `$`(`P-values`))
+
+
+
+save.image(paste0(example_names, Sys.Date(), "_simualation_results.Rdata"))
+
+Simu_results_list_example_SLC %>% sapply( function(x) x$K_hat_obs) %>% table %>% kable 
+sum_res_simulation(Simu_results_list_example_SLC)->res_table
+add_column(res_table, Chen_power=(p_value_vector_chen<0.05) %>% mean) %>% add_column( Chen_power_K03=(p_value_vector_chen_m03<0.05) %>% mean) %>% kable
+res_table%>% kable 
+
+
+
+Simu_results_list_example_SLC %>% sapply(function(x) x$K_confidence_set %>% sort %>% paste0(collapse = " ")) %>% table
+```
+
+
+Table:Simulation Results
+| coverage_confidence| size_confidence| coverage_candidate| length_candidate| Chen_power| Chen_power_K03|
+|-------------------:|---------------:|------------------:|----------------:|----------:|--------------:|
+|               0.965|           3.655|              0.965|             4.16|      0.485|           0.07|
+
+
+Table: Frequency of Estimation
+|.  | Freq|
+|:--|----:|
+|1  |    4|
+|2  |  186|
+|3  |   10|
+
+
+
+```{r some weird behaviour of R}
+
+Simu_results_list_example_3<-list()
+ys.obs=0
+
+for (i in 1:simu.size){
+#  set.seed(56+i)
+  set.seed(seed_vector[i])
+print("sum y")  
+sum(ys.obs) %>% print
+M.tmp = factor(sample(c(1,2,3), nn, replace = T, prob = p0))
+M.mat = model.matrix(~ M.tmp - 1)
+print(nn)
+aa<-rnorm(nn)
+print("sum aa")
+sum(aa) %>% print
+us.rel = aa
+print("sum u")
+sum(us.rel) %>% print
+ys.obs = M.mat %*% mu0 + diag(us.rel) %*% M.mat %*% sigma2.0^.5
+
+print("sum y again")
+sum(ys.obs) %>% print
+
+K_h_grid=1:10
+K_inference_repro_Mu(ys.obs,K_h_grid, repro_M_size = 10, skip_K_obs = TRUE) ->Simu_results_list_example_3[[i]]
+print("sum y after run")
+
+sum(Simu_results_list_example_3[[i]]$ys.obs) %>% print
+  
+}
+  
+
+
+
+```
+
+
+
+
+```{r more weird behavrior of R}
+> ##Data in MixtureInf package
+> source('D:/Dropbox/Repro Sampling General/R Codes/Functions_and_Packages.R')
+> data(SLC)
+> set.seed(7788)
+> K_h_grid=1:10
+> K_infer_SLC<-K_inference_repro_Mu(ys.obs = SLC$SLC, K_h_grid, repro_M_size = 200, repro_size = 200, skip_K_obs = FALSE)
+  |                                                  | 0 % ~calculating  [1] -6.599025
+1 : * * *
+2 : * * *
+3 : * * *
+4 : * * *
+5 : * * *
+6 : * * *
+7 : * * *
+8 : * * *
+9 : * * *
+10 : * * *
+[1] -4.27981
+1 : * * *
+2 : * * *
+3 : * * *
+4 : * * *
+5 : * * *
+6 : * *
+
+
+> source('D:/Dropbox/Repro Sampling General/R Codes/Functions_and_Packages.R')
+> data(SLC)
+> set.seed(1122)
+> K_h_grid=1:10
+> K_infer_SLC<-K_inference_repro_Mu(ys.obs = SLC$SLC, K_h_grid, repro_M_size = 200, repro_size = 200, skip_K_obs = FALSE)
+  |                                                  | 0 % ~calculating  [1] -6.599025
+1 : * * *
+2 : * * *
+3 : * * *
+4 : * * *
+5 : * * *
+6 : *
+
+```
+
+
+
+```{r}
+# clusterExport(cl,c("ys.obs", "K_h_grid"))
+# Mu_matrix_2<-parReplicate(cl, 100, stepFlexmix(ys.obs ~ rnorm(length(ys.obs)), k = K_h_grid) %>% getModel("BIC") %>% '@'(cluster))
+
+
+# 
+# no_of_nodes = 10
+# 
+# #library(progressr)
+# cl <- makeCluster(no_of_nodes)
+# registerDoParallel(cl)
+# 
+# #p <- progressor(along = 1:simu.size)
+# K_inference_simulation<-foreach(i=1:simu.size, .packages = c("Matrix", "ClusterR", "tidyverse","pbapply"),.export = ls(globalenv()), .verbose = FALSE ) %dopar% 
+#            {
+#             M.tmp = factor(sample(c(1,2,3), nn, replace = T, prob = p0))
+#             M.mat = model.matrix(~ M.tmp - 1)
+#             us.rel = rnorm(nn)
+#             ys.obs = M.mat %*% mu0 + diag(us.rel) %*% M.mat %*% sigma2.0^.5
+#            # p(sprintf("i=%g", i/simu.size))
+# 
+#             All<-K_inference_repro(ys.obs, K_h_grid=1:10)
+# 
+#            } 
+# stopCluster(cl)
+# 
+# K_coverage <-sapply(K_inference_simulation, function(x) K0 %in% x$K_confidence_set) %>% mean
+# Width <-  sapply(K_inference_simulation, function(x)  length(x$K_confidence_set)) %>% mean
+```
+
